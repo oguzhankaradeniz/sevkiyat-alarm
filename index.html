@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sevkiyat Takip — L2-L3</title>
+<style>
+  :root{
+    --paper:#F1F3EF; --surface:#FFFFFF; --ink:#172420; --ink2:#47554F; --muted:#78867F;
+    --line:#DCE1D7; --line-strong:#B9C2B4; --accent:#2F6F5E;
+    --ok:#3E8F5C; --ok-soft:#E4F0E7;
+    --warn:#B8862B; --warn-soft:#F6ECD8;
+    --critical:#C23B3B; --critical-soft:#F7E3E1;
+    --muted-soft:#EDEFEA;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:system-ui,-apple-system,'Segoe UI',sans-serif; padding:24px 16px 60px; }
+  .wrap{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  h1{ font-size:22px; margin:0; }
+  .sub{ font-size:13px; color:var(--muted); }
+  .tabs{ display:flex; gap:8px; border-bottom:1px solid var(--line); }
+  .tab-btn{ appearance:none; border:none; background:none; padding:10px 16px; font-size:14px; font-weight:600; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; }
+  .tab-btn.active{ color:var(--accent); border-bottom-color:var(--accent); }
+  .panel{ display:none; flex-direction:column; gap:16px; }
+  .panel.active{ display:flex; }
+
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:14px; display:flex; flex-direction:column; gap:4px; }
+  .card .n{ font-size:28px; font-weight:700; }
+  .card .l{ font-size:12px; color:var(--muted); }
+  .card.kirmizi{ background:var(--critical-soft); border-color:var(--critical); } .card.kirmizi .n{ color:var(--critical); }
+  .card.turuncu{ background:var(--warn-soft); border-color:var(--warn); } .card.turuncu .n{ color:var(--warn); }
+  .card.kargoda_yolda,.card.anomali{ background:var(--muted-soft); } .card.kargoda_yolda .n,.card.anomali .n{ color:var(--ink2); }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; background:var(--surface); border:1px solid var(--line); border-radius:6px; overflow:hidden;}
+  th,td{ text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+  th{ font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); background:var(--muted-soft); }
+  tr:last-child td{ border-bottom:none; }
+  .badge{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .badge.kirmizi{ background:var(--critical-soft); color:var(--critical); }
+  .badge.turuncu{ background:var(--warn-soft); color:var(--warn); }
+  .badge.sari{ background:var(--warn-soft); color:var(--warn); }
+  .badge.zamaninda,.badge.delivered{ background:var(--ok-soft); color:var(--ok); }
+  .badge.kargoda_yolda,.badge.anomali,.badge.cancelled{ background:var(--muted-soft); color:var(--ink2); }
+
+  .search-row{ display:flex; gap:8px; }
+  input[type=text]{ flex:1; padding:10px 12px; border:1px solid var(--line-strong); border-radius:6px; font-size:14px; }
+  button{ padding:10px 18px; border:none; border-radius:6px; background:var(--accent); color:#fff; font-weight:600; font-size:14px; cursor:pointer; }
+  button:disabled{ opacity:.5; cursor:default; }
+
+  .result{ background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:18px; display:none; flex-direction:column; gap:14px; }
+  .result.show{ display:flex; }
+  .result-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .result-head h2{ font-size:18px; margin:0; }
+
+  .timeline{ display:flex; flex-direction:column; gap:0; }
+  .tl-row{ display:grid; grid-template-columns:130px 1fr; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .tl-row:last-child{ border-bottom:none; }
+  .tl-label{ color:var(--muted); font-weight:600; }
+  .tl-value{ color:var(--ink); }
+  .tl-value.empty{ color:var(--muted); font-style:italic; }
+
+  .note{ font-size:12px; color:var(--muted); }
+  .error{ color:var(--critical); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Sevkiyat Takip</h1>
+    <div class="sub">MAD / Tübitak / TRTmarket / Lidya · <span id="gen-at">yükleniyor…</span></div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="dashboard">Genel Durum</button>
+    <button class="tab-btn" data-tab="lookup">Sipariş Ara</button>
+  </div>
+
+  <div class="panel active" id="panel-dashboard">
+    <div class="cards" id="cards"></div>
+    <table>
+      <thead><tr><th>Müşteri</th><th>Sipariş No</th><th>Durum</th><th>Sahada mı</th><th>Bekleme</th></tr></thead>
+      <tbody id="examples-body"><tr><td colspan="5">Yükleniyor…</td></tr></tbody>
+    </table>
+    <div class="note">Sadece cutoff'a &lt;2 saat kalmış veya kaçmış siparişler listelenir. 60 saniyede bir otomatik yenilenir.</div>
+  </div>
+
+  <div class="panel" id="panel-lookup">
+    <div class="search-row">
+      <input type="text" id="sip-input" placeholder="Sipariş no (ör. 1-S-4-260437_1)">
+      <button id="sip-btn">Sorgula</button>
+    </div>
+    <div id="sip-error" class="error"></div>
+    <div class="result" id="sip-result"></div>
+  </div>
+</div>
+
+<script>
+  var WORKER_URL = 'https://sevkiyat-alarm-api.oguzhan-kdeniz.workers.dev/';
+
+  var TIER_LABEL = {
+    kirmizi: 'Kritik — sahada', turuncu: 'Cutoff kaçtı', sari: 'Cutoff yaklaşıyor',
+    zamaninda: 'Zamanında', kargoda_yolda: 'Kargoda / yolda', anomali: 'Veri anomalisi',
+    delivered: 'Teslim edildi', cancelled: 'İptal edildi'
+  };
+  var CARD_ORDER = ['kirmizi','turuncu','kargoda_yolda','anomali'];
+  var CARD_LABEL = { kirmizi:'Kritik', turuncu:'Cutoff kaçtı', kargoda_yolda:'Kargoda/yolda', anomali:'Anomali' };
+
+  function fmtHrs(h){
+    if(h === undefined || h === null) return '—';
+    h = Number(h);
+    return (h < 10 ? h.toFixed(1) : Math.round(h)) + ' sa';
+  }
+  function fmtDate(iso){
+    if(!iso) return null;
+    try{ return new Date(iso).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}); }
+    catch(e){ return iso; }
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  function renderDashboard(data){
+    document.getElementById('gen-at').textContent = 'Son güncelleme: ' + fmtDate(data.generatedAt);
+    var countsByTier = {};
+    (data.counts || []).forEach(function(c){ countsByTier[c.tier] = Number(c.adet); });
+
+    var cardsEl = document.getElementById('cards');
+    cardsEl.innerHTML = '';
+    CARD_ORDER.forEach(function(tier){
+      var card = document.createElement('div');
+      card.className = 'card ' + tier;
+      card.innerHTML = '<div class="n">' + (countsByTier[tier] || 0).toLocaleString('tr-TR') + '</div><div class="l">' + CARD_LABEL[tier] + '</div>';
+      cardsEl.appendChild(card);
+    });
+
+    var body = document.getElementById('examples-body');
+    var rows = data.examples || [];
+    if(!rows.length){ body.innerHTML = '<tr><td colspan="5">Kayıt yok.</td></tr>'; return; }
+    body.innerHTML = rows.map(function(r){
+      var sahada = (r.cargo_state === 'ReadyToShip' || r.cargo_state === 'WaitingForSLAM') ? 'Evet' : (r.cargo_state === 'Dispatched' ? 'Hayır (kargoda)' : '—');
+      return '<tr>' +
+        '<td>' + r.musteri + '</td>' +
+        '<td>' + r.sip_no + '</td>' +
+        '<td><span class="badge ' + r.tier + '">' + (TIER_LABEL[r.tier] || r.tier) + '</span></td>' +
+        '<td>' + sahada + '</td>' +
+        '<td>' + fmtHrs(r.dwell_saat) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function loadDashboard(){
+    fetch(WORKER_URL + '?limit=30', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderDashboard)
+      .catch(function(err){ document.getElementById('gen-at').textContent = 'Veri alınamadı: ' + err; });
+  }
+  loadDashboard();
+  setInterval(loadDashboard, 60000);
+
+  var STAGE_ROWS = [
+    ['Sipariş oluşturuldu', 'Created_At'],
+    ['Toplama başladı', 'Picking_StartedAt'],
+    ['Toplama tamamlandı', 'Picking_CompletedAt'],
+    ['Paketleme başladı', 'Packing_StartedAt'],
+    ['Paketleme tamamlandı', 'Packing_CompletedAt'],
+    ['SLAM başladı', 'SLAM_StartedAt'],
+    ['SLAM tamamlandı', 'SLAM_CompletedAt'],
+    ['Dispatch başladı', 'Dispatch_StartedAt'],
+    ['Dispatch tamamlandı', 'Dispatch_CompletedAt'],
+    ['Teslim edildi', 'Delivered_At']
+  ];
+
+  function renderLookup(data){
+    var resultEl = document.getElementById('sip-result');
+    var errorEl = document.getElementById('sip-error');
+    errorEl.textContent = '';
+    if(data.error){ errorEl.textContent = 'Hata: ' + data.error; resultEl.classList.remove('show'); return; }
+    if(!data.found){ errorEl.textContent = 'Bu sipariş no bulunamadı: ' + data.sip_no; resultEl.classList.remove('show'); return; }
+
+    var sahadaMi = (data.cargo_state === 'ReadyToShip' || data.cargo_state === 'WaitingForSLAM');
+    var html = '<div class="result-head">' +
+      '<h2>' + data.musteri + ' — ' + data.sip_no + '</h2>' +
+      '<span class="badge ' + data.tier + '">' + (TIER_LABEL[data.tier] || data.tier) + '</span>' +
+      '</div>';
+    html += '<div class="note">Sipariş durumu: <b>' + data.order_state + '</b> · Sahada mı: <b>' + (sahadaMi ? 'Evet, sahada bekliyor' : (data.cargo_state === 'Dispatched' ? 'Hayır, kargoya verilmiş' : '—')) + '</b>' +
+      (data.cutoff ? ' · Cutoff: <b>' + fmtDate(data.cutoff) + '</b>' : '') + '</div>';
+    html += '<div class="timeline">' + STAGE_ROWS.map(function(pair){
+      var val = data[pair[1]];
+      return '<div class="tl-row"><div class="tl-label">' + pair[0] + '</div><div class="tl-value' + (val ? '' : ' empty') + '">' + (val ? fmtDate(val) : 'henüz yok') + '</div></div>';
+    }).join('') + '</div>';
+    resultEl.innerHTML = html;
+    resultEl.classList.add('show');
+  }
+
+  function doLookup(){
+    var v = document.getElementById('sip-input').value.trim();
+    var errorEl = document.getElementById('sip-error');
+    if(!v){ errorEl.textContent = 'Sipariş no girin.'; return; }
+    var btn = document.getElementById('sip-btn');
+    btn.disabled = true; errorEl.textContent = '';
+    fetch(WORKER_URL + 'lookup?sip_no=' + encodeURIComponent(v), { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderLookup)
+      .catch(function(err){ errorEl.textContent = 'Sorgu başarısız: ' + err; })
+      .finally(function(){ btn.disabled = false; });
+  }
+  document.getElementById('sip-btn').addEventListener('click', doLookup);
+  document.getElementById('sip-input').addEventListener('keydown', function(e){ if(e.key === 'Enter') doLookup(); });
+</script>
+</body>
+</html>
