@@ -73,6 +73,7 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="dashboard">Genel Durum</button>
+    <button class="tab-btn" data-tab="risk">Riskli Takip</button>
     <button class="tab-btn" data-tab="lookup">Sipariş Ara</button>
   </div>
 
@@ -83,6 +84,14 @@
       <tbody id="examples-body"><tr><td colspan="5">Yükleniyor…</td></tr></tbody>
     </table>
     <div class="note">Sadece cutoff'a &lt;2 saat kalmış veya kaçmış siparişler listelenir. 60 saniyede bir otomatik yenilenir.</div>
+  </div>
+
+  <div class="panel" id="panel-risk">
+    <div class="note">Cutoff'a bakmaksızın: her sipariş şu an bulunduğu <b>tek bir aşamada</b> (toplama bitti→paketleme, paketleme bitti→SLAM, SLAM bitti→dispatch) ne kadar süredir takılı, o geçiş için o müşterinin normal (p99) süresine göre kaç kat uzun. 1'in üzeri = o geçiş için olağandışı — cutoff'a daha günler olsa bile erken uyarı.</div>
+    <table>
+      <thead><tr><th>Müşteri</th><th>Sipariş No</th><th>Takıldığı Aşama</th><th>Süre</th><th>Normal Süre</th><th>Kaç Kat</th></tr></thead>
+      <tbody id="risk-body"><tr><td colspan="6">Yükleniyor…</td></tr></tbody>
+    </table>
   </div>
 
   <div class="panel" id="panel-lookup">
@@ -161,8 +170,46 @@
       .then(renderDashboard)
       .catch(function(err){ document.getElementById('gen-at').textContent = 'Veri alınamadı: ' + err; });
   }
+
+  var GAP_LABEL = {
+    picking_to_packing: 'Toplama bitti, paketleme bekliyor',
+    packing_to_slam: 'Paketleme bitti, SLAM bekliyor',
+    slam_to_dispatch: 'SLAM bitti, sahada dispatch bekliyor'
+  };
+  function fmtDakikaSaat(dk){
+    if(dk === undefined || dk === null) return '—';
+    dk = Number(dk);
+    if(dk < 90) return Math.round(dk) + ' dk';
+    return fmtHrs(dk / 60);
+  }
+  function renderRisk(data){
+    var body = document.getElementById('risk-body');
+    var rows = data.rows || [];
+    if(!rows.length){ body.innerHTML = '<tr><td colspan="6">Şu an eşiği aşan sipariş yok.</td></tr>'; return; }
+    body.innerHTML = rows.map(function(r){
+      var siddet = Number(r.siddet);
+      var renk = siddet >= 3 ? 'kirmizi' : 'turuncu';
+      return '<tr>' +
+        '<td>' + r.musteri + '</td>' +
+        '<td>' + r.sip_no + '</td>' +
+        '<td>' + (GAP_LABEL[r.gap_type] || r.gap_type) + '</td>' +
+        '<td>' + fmtDakikaSaat(r.gap_dakika) + '</td>' +
+        '<td>' + fmtDakikaSaat(r.esik_dakika) + '</td>' +
+        '<td><span class="badge ' + renk + '">' + siddet.toFixed(1) + 'x</span></td>' +
+        '</tr>';
+    }).join('');
+  }
+  function loadRisk(){
+    fetch(WORKER_URL + 'risk?limit=15', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderRisk)
+      .catch(function(err){ document.getElementById('risk-body').innerHTML = '<tr><td colspan="6">Veri alınamadı: ' + err + '</td></tr>'; });
+  }
+
   loadDashboard();
+  loadRisk();
   setInterval(loadDashboard, 60000);
+  setInterval(loadRisk, 60000);
 
   var STAGE_ROWS = [
     ['Sipariş oluşturuldu', 'Created_At'],
