@@ -243,6 +243,25 @@
   .pl-kv .v{ font-size:.82rem; font-weight:600; color:var(--ink); }
   .pl-kv .v.empty{ font-weight:400; font-style:italic; color:var(--muted); }
 
+  /* ---- Aktif Listeler: az sayida (5-10) liste icin okunabilir kart gorunumu ---- */
+  .pl-active-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+  .pl-active-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:8px; transition:border-color .15s ease, transform .15s ease; }
+  .pl-active-card:hover{ border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); transform:translateY(-1px); }
+  .pl-active-card .pl-ac-name{ font-size:.84rem; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pl-active-card .pl-ac-meta{ font-size:.72rem; color:var(--muted); }
+  .pl-ac-bar{ display:flex; height:9px; border-radius:5px; overflow:hidden; background:var(--surface-alt); }
+  .pl-ac-seg{ height:100%; }
+  .pl-ac-seg.created{ background:var(--line-strong, var(--muted)); opacity:.6; }
+  .pl-ac-seg.picking{ background:var(--accent-2); }
+  .pl-ac-seg.packing{ background:var(--accent); }
+  .pl-ac-seg.slam{ background:var(--warn); }
+  .pl-ac-seg.dispatch{ background:#0891b2; }
+  .pl-ac-seg.delivered{ background:var(--ok); }
+  .pl-ac-seg.cancelled{ background:var(--muted); opacity:.4; }
+  .pl-ac-legend{ display:flex; flex-wrap:wrap; gap:6px 10px; font-size:.68rem; color:var(--ink-soft); }
+  .pl-ac-legend span{ display:inline-flex; align-items:center; gap:4px; }
+  .pl-ac-legend i{ width:8px; height:8px; border-radius:2px; display:inline-block; }
+
   @media print{
     @page{ size:A4 landscape; margin:9mm; }
     header.top .updated-group, .stats, .tabbar, .print-btn, .share-overlay, .search-row{ display:none !important; }
@@ -410,10 +429,16 @@
     <div class="panel-head">
       <div>
         <h2>Toplama Listeleri</h2>
-        <p>Bir toplama listesinin toplaması bitince "iş bitti" sayılıyor, ama listedeki siparişlerin asıl akıbeti (paketleme/SLAM/dispatch/teslimat) ayrıca takip edilmiyor. Burada 1-7 gün önce açılmış, toplaması tamamlanmış listelerin içindeki siparişlerden kaçının hâlâ çözülmediği gösteriliyor — en eski/en çok unutulan liste en üstte.</p>
+        <p>Birikim düzene girince günlük olarak takip edilecek liste sayısı azdır (~5-10) — o yüzden aşağıdaki "Aktif Listeler" kart görünümü az sayıda listeyi tek bakışta okunabilir tutmak için tasarlandı. Alttaki tablo ise birikim/kriz durumunda "hangi liste unutuldu" sorusuna bakan ayrı bir denetim listesi.</p>
       </div>
     </div>
-    <div class="stats" id="picklists-summary" style="grid-template-columns:1fr; max-width:320px;"></div>
+
+    <h3 style="font-size:.9rem;margin:0 0 4px;">Aktif Listeler (en güncel, hâlâ açık siparişi olan ~10 liste)</h3>
+    <div class="note" style="margin-bottom:10px;">Her liste bir kart — çubuk, içindeki siparişlerin şu an hangi aşamada olduğunu gösteriyor. Detay için karta tıklayın.</div>
+    <div class="pl-active-grid" id="pl-active-grid"></div>
+
+    <h3 style="font-size:.9rem;margin:26px 0 4px;">Geçmiş / Unutulmuş Listeler (denetim — 1-7 gün eski, hâlâ açığı olanlar)</h3>
+    <div class="stats" id="picklists-summary" style="grid-template-columns:1fr; max-width:320px; margin:10px 0 14px;"></div>
     <div class="note" style="margin-bottom:8px;">Detayını görmek için bir listeye tıklayın.</div>
     <div class="table-scroll" style="margin-bottom:22px;">
       <table>
@@ -679,6 +704,47 @@
       tr.addEventListener('click', function(){ loadPickListDetail(tr.getAttribute('data-id'), tr.getAttribute('data-name')); });
     });
   }
+  var PL_ACTIVE_SEGMENTS = [
+    ['created', 'st_created', 'Created'], ['picking', 'st_picking', 'Toplama'], ['packing', 'st_packing', 'Paketleme'],
+    ['slam', 'st_slam', 'SLAM'], ['dispatch', 'st_dispatch', 'Dispatch'], ['delivered', 'st_delivered', 'Teslim'],
+    ['cancelled', 'st_cancelled', 'İptal']
+  ];
+  function fmtAgeSaat(iso){
+    var saat = (Date.now() - new Date(iso).getTime()) / 3600000;
+    return saat < 1 ? Math.round(saat * 60) + ' dk önce' : fmtHrs(saat) + ' önce';
+  }
+  function renderActivePickLists(data){
+    var rows = data.rows || [];
+    var grid = document.getElementById('pl-active-grid');
+    if(!rows.length){ grid.innerHTML = '<div class="note">Şu an açık liste yok.</div>'; return; }
+    grid.innerHTML = rows.map(function(r){
+      var toplam = Number(r.toplam) || 1;
+      var segs = PL_ACTIVE_SEGMENTS.map(function(s){
+        var adet = Number(r[s[1]]);
+        if(!adet) return '';
+        return '<div class="pl-ac-seg ' + s[0] + '" style="width:' + Math.round((adet/toplam)*100) + '%" title="' + s[2] + ': ' + adet + '"></div>';
+      }).join('');
+      var legend = PL_ACTIVE_SEGMENTS.filter(function(s){ return Number(r[s[1]]) > 0; }).map(function(s){
+        return '<span><i class="pl-ac-seg ' + s[0] + '"></i>' + s[2] + ' ' + r[s[1]] + '</span>';
+      }).join('');
+      return '<div class="pl-active-card" data-id="' + esc(r.Id) + '" data-name="' + esc(r.liste_adi) + '">' +
+        '<div class="pl-ac-name">' + esc(r.liste_adi) + '</div>' +
+        '<div class="pl-ac-meta">' + fmtAgeSaat(r.olusturuldu) + ' · ' + Number(r.toplam).toLocaleString('tr-TR') + ' sipariş</div>' +
+        '<div class="pl-ac-bar">' + segs + '</div>' +
+        '<div class="pl-ac-legend">' + legend + '</div>' +
+        '</div>';
+    }).join('');
+    grid.querySelectorAll('.pl-active-card').forEach(function(card){
+      card.addEventListener('click', function(){ loadPickListDetail(card.getAttribute('data-id'), card.getAttribute('data-name')); });
+    });
+  }
+  function loadActivePickLists(){
+    fetch(WORKER_URL + 'pick-lists-active?limit=10', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderActivePickLists)
+      .catch(function(err){ document.getElementById('pl-active-grid').innerHTML = '<div class="note">Veri alınamadı: ' + err + '</div>'; });
+  }
+
   function loadPickLists(){
     fetch(WORKER_URL + 'pick-lists?limit=20', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
@@ -765,12 +831,14 @@
   loadRisk();
   loadHistory();
   loadCapacity();
+  loadActivePickLists();
   loadPickLists();
   setInterval(loadDashboard, 60000);
   setInterval(loadTopSku, 60000);
   setInterval(loadRisk, 60000);
   setInterval(loadHistory, 60000);
   setInterval(loadCapacity, 60000);
+  setInterval(loadActivePickLists, 60000);
   setInterval(loadPickLists, 60000);
 
   var STAGE_ROWS = [
