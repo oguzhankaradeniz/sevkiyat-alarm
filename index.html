@@ -247,6 +247,8 @@
   .pl-active-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
   .pl-active-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:8px; transition:border-color .15s ease, transform .15s ease; }
   .pl-active-card:hover{ border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); transform:translateY(-1px); }
+  .pl-active-card.pl-oldest{ border-color:var(--risk); border-width:2px; position:relative; }
+  .pl-oldest-tag{ position:absolute; top:-9px; left:12px; background:var(--risk); color:#fff; font-size:.62rem; font-weight:700; letter-spacing:.04em; padding:2px 8px; border-radius:999px; }
   .pl-active-card .pl-ac-name{ font-size:.84rem; font-weight:700; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pl-active-card .pl-ac-meta{ font-size:.72rem; color:var(--muted); }
   .pl-ac-bar{ display:flex; height:9px; border-radius:5px; overflow:hidden; background:var(--surface-alt); }
@@ -433,8 +435,8 @@
       </div>
     </div>
 
-    <h3 style="font-size:.9rem;margin:0 0 4px;">Aktif Listeler (en güncel, hâlâ açık siparişi olan ~10 liste)</h3>
-    <div class="note" style="margin-bottom:10px;">Her liste bir kart — çubuk, içindeki siparişlerin şu an hangi aşamada olduğunu gösteriyor. Detay için karta tıklayın.</div>
+    <h3 style="font-size:.9rem;margin:0 0 4px;">Aktif Listeler (en eski → en yeni, hâlâ açık siparişi olan ~10 liste)</h3>
+    <div class="note" style="margin-bottom:10px;">Zamanla yarıştığımız bir operasyon — en eski liste en önemlisi, bu yüzden en üstte. Her kart, içindeki siparişlerin şu an hangi aşamada olduğunu gösteriyor. Detay için karta tıklayın.</div>
     <div class="pl-active-grid" id="pl-active-grid"></div>
 
     <h3 style="font-size:.9rem;margin:26px 0 4px;">Geçmiş / Unutulmuş Listeler (denetim — 1-7 gün eski, hâlâ açığı olanlar)</h3>
@@ -709,16 +711,22 @@
     ['slam', 'st_slam', 'SLAM'], ['dispatch', 'st_dispatch', 'Dispatch'], ['delivered', 'st_delivered', 'Teslim'],
     ['cancelled', 'st_cancelled', 'İptal']
   ];
-  function fmtAgeSaat(iso){
-    var saat = (Date.now() - new Date(iso).getTime()) / 3600000;
-    return saat < 1 ? Math.round(saat * 60) + ' dk önce' : fmtHrs(saat) + ' önce';
+  function ageSaatSayi(iso){ return (Date.now() - new Date(iso).getTime()) / 3600000; }
+  function fmtAgeSaat(saat){ return saat < 1 ? Math.round(saat * 60) + ' dk önce' : fmtHrs(saat) + ' önce'; }
+  // Yas ne kadar buyukse o kadar acil -- "en eski en onemli" (kullanici, 2026-09-13).
+  function ageAcilyetRengi(saat){
+    if(saat >= 24) return 'kirmizi';
+    if(saat >= 8) return 'turuncu';
+    return null;
   }
   function renderActivePickLists(data){
     var rows = data.rows || [];
     var grid = document.getElementById('pl-active-grid');
     if(!rows.length){ grid.innerHTML = '<div class="note">Şu an açık liste yok.</div>'; return; }
-    grid.innerHTML = rows.map(function(r){
+    grid.innerHTML = rows.map(function(r, i){
       var toplam = Number(r.toplam) || 1;
+      var saat = ageSaatSayi(r.olusturuldu);
+      var acilRenk = ageAcilyetRengi(saat);
       var segs = PL_ACTIVE_SEGMENTS.map(function(s){
         var adet = Number(r[s[1]]);
         if(!adet) return '';
@@ -727,9 +735,10 @@
       var legend = PL_ACTIVE_SEGMENTS.filter(function(s){ return Number(r[s[1]]) > 0; }).map(function(s){
         return '<span><i class="pl-ac-seg ' + s[0] + '"></i>' + s[2] + ' ' + r[s[1]] + '</span>';
       }).join('');
-      return '<div class="pl-active-card" data-id="' + esc(r.Id) + '" data-name="' + esc(r.liste_adi) + '">' +
+      return '<div class="pl-active-card' + (i === 0 ? ' pl-oldest' : '') + '" data-id="' + esc(r.Id) + '" data-name="' + esc(r.liste_adi) + '">' +
+        (i === 0 ? '<div class="pl-oldest-tag">EN ESKİ</div>' : '') +
         '<div class="pl-ac-name">' + esc(r.liste_adi) + '</div>' +
-        '<div class="pl-ac-meta">' + fmtAgeSaat(r.olusturuldu) + ' · ' + Number(r.toplam).toLocaleString('tr-TR') + ' sipariş</div>' +
+        '<div class="pl-ac-meta">' + (acilRenk ? '<span class="badge ' + acilRenk + '">' + fmtAgeSaat(saat) + '</span>' : fmtAgeSaat(saat)) + ' · ' + Number(r.toplam).toLocaleString('tr-TR') + ' sipariş</div>' +
         '<div class="pl-ac-bar">' + segs + '</div>' +
         '<div class="pl-ac-legend">' + legend + '</div>' +
         '</div>';
