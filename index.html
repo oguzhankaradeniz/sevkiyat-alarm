@@ -74,6 +74,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="dashboard">Genel Durum</button>
     <button class="tab-btn" data-tab="risk">Riskli Takip</button>
+    <button class="tab-btn" data-tab="history">Gün ve Geçmiş</button>
     <button class="tab-btn" data-tab="lookup">Sipariş Ara</button>
   </div>
 
@@ -92,6 +93,24 @@
       <thead><tr><th>Müşteri</th><th>Sipariş No</th><th>Takıldığı Aşama</th><th>Süre</th><th>Normal Süre</th><th>Kaç Kat</th></tr></thead>
       <tbody id="risk-body"><tr><td colspan="6">Yükleniyor…</td></tr></tbody>
     </table>
+  </div>
+
+  <div class="panel" id="panel-history">
+    <div class="note">Saatte bir otomatik olarak kaydedilen anlık görüntülerden. "Bugün" saatlik, "Geçmiş" günlük (o günün en yüksek değeri) — basit, uzun vadede sürdürülebilir bir takip için.</div>
+    <div>
+      <h3 style="font-size:14px;margin:0 0 8px;">Bugün (saatlik)</h3>
+      <table>
+        <thead><tr><th>Saat</th><th>Kritik</th><th>Cutoff kaçtı</th><th>Kargoda/yolda</th><th>Anomali</th><th>Riskli geçiş</th></tr></thead>
+        <tbody id="history-today-body"><tr><td colspan="6">Yükleniyor…</td></tr></tbody>
+      </table>
+    </div>
+    <div>
+      <h3 style="font-size:14px;margin:16px 0 8px;">Geçmiş (günlük, o günün en yüksek değeri)</h3>
+      <table>
+        <thead><tr><th>Gün</th><th>Kritik</th><th>Cutoff kaçtı</th><th>Kargoda/yolda</th><th>Anomali</th><th>Riskli geçiş</th></tr></thead>
+        <tbody id="history-daily-body"><tr><td colspan="6">Yükleniyor…</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="panel" id="panel-lookup">
@@ -206,10 +225,56 @@
       .catch(function(err){ document.getElementById('risk-body').innerHTML = '<tr><td colspan="6">Veri alınamadı: ' + err + '</td></tr>'; });
   }
 
+  var METRIC_COLS = ['kirmizi', 'turuncu', 'kargoda_yolda', 'anomali', 'riskli_gecis'];
+
+  // Uzun formattaki (captured_at/gun, metric, value) satirlari, her zaman noktasi
+  // icin tek bir satirda tum metrikleri gosteren genis bir tabloya donusturur.
+  function pivotByKey(rows, keyField){
+    var byKey = {};
+    var order = [];
+    rows.forEach(function(r){
+      var k = r[keyField];
+      if(!byKey[k]){ byKey[k] = {}; order.push(k); }
+      byKey[k][r.metric] = r.value !== undefined ? r.value : r.deger;
+    });
+    return order.map(function(k){ return { key: k, vals: byKey[k] }; });
+  }
+  function fmtSaatOnly(iso){
+    try{ return new Date(iso).toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}); }
+    catch(e){ return iso; }
+  }
+  function renderHistory(data){
+    var todayPivot = pivotByKey(data.today || [], 'captured_at');
+    var todayBody = document.getElementById('history-today-body');
+    todayBody.innerHTML = todayPivot.length ? todayPivot.map(function(row){
+      return '<tr><td>' + fmtSaatOnly(row.key) + '</td>' +
+        METRIC_COLS.map(function(m){ return '<td>' + (row.vals[m] !== undefined ? Number(row.vals[m]).toLocaleString('tr-TR') : '—') + '</td>'; }).join('') +
+        '</tr>';
+    }).join('') : '<tr><td colspan="6">Bugün için henüz kayıt yok.</td></tr>';
+
+    var dailyPivot = pivotByKey(data.history || [], 'gun');
+    var dailyBody = document.getElementById('history-daily-body');
+    dailyBody.innerHTML = dailyPivot.length ? dailyPivot.map(function(row){
+      return '<tr><td>' + row.key + '</td>' +
+        METRIC_COLS.map(function(m){ return '<td>' + (row.vals[m] !== undefined ? Number(row.vals[m]).toLocaleString('tr-TR') : '—') + '</td>'; }).join('') +
+        '</tr>';
+    }).join('') : '<tr><td colspan="6">Henüz geçmiş kaydı yok.</td></tr>';
+  }
+  function loadHistory(){
+    fetch(WORKER_URL + 'history', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderHistory)
+      .catch(function(err){
+        document.getElementById('history-today-body').innerHTML = '<tr><td colspan="6">Veri alınamadı: ' + err + '</td></tr>';
+      });
+  }
+
   loadDashboard();
   loadRisk();
+  loadHistory();
   setInterval(loadDashboard, 60000);
   setInterval(loadRisk, 60000);
+  setInterval(loadHistory, 60000);
 
   var STAGE_ROWS = [
     ['Sipariş oluşturuldu', 'Created_At'],
