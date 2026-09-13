@@ -82,6 +82,7 @@
     <button class="tab-btn active" data-tab="dashboard">Genel Durum</button>
     <button class="tab-btn" data-tab="risk">Riskli Takip</button>
     <button class="tab-btn" data-tab="history">Gün ve Geçmiş</button>
+    <button class="tab-btn" data-tab="capacity">Kapasite</button>
     <button class="tab-btn" data-tab="lookup">Sipariş Ara</button>
   </div>
 
@@ -118,6 +119,22 @@
         <tbody id="history-daily-body"><tr><td colspan="6">Yükleniyor…</td></tr></tbody>
       </table>
     </div>
+  </div>
+
+  <div class="panel" id="panel-capacity">
+    <div class="cards" id="capacity-cards"></div>
+    <div>
+      <h3 style="font-size:14px;margin:0 0 8px;">Taşıyıcı bazında son 24 saat</h3>
+      <table>
+        <thead><tr><th>Taşıyıcı</th><th>Adet</th></tr></thead>
+        <tbody id="carrier-body"><tr><td colspan="2">Yükleniyor…</td></tr></tbody>
+      </table>
+    </div>
+    <div>
+      <h3 style="font-size:14px;margin:16px 0 8px;">Saat bazında dispatch dağılımı (son 3 gün, TR saati)</h3>
+      <div id="hourly-bars" style="display:flex; flex-direction:column; gap:4px;"></div>
+    </div>
+    <div class="note">Kargo teslimi sürekli değil, gün içinde belirli saatlerde toplu oluyor — bu yüzden burada bir "ne zaman biter" tahmini yok, sadece gerçek hacim gösteriliyor.</div>
   </div>
 
   <div class="panel" id="panel-lookup">
@@ -276,12 +293,48 @@
       });
   }
 
+  function renderCapacity(data){
+    var cardsEl = document.getElementById('capacity-cards');
+    cardsEl.innerHTML = '<div class="card"><div class="n">' + Number(data.last24hToplam).toLocaleString('tr-TR') + '</div><div class="l">Son 24 saatte dispatch edilen</div></div>';
+
+    var carrierBody = document.getElementById('carrier-body');
+    var carriers = data.carriers || [];
+    carrierBody.innerHTML = carriers.length ? carriers.map(function(c){
+      return '<tr><td>' + c.tasiyici + '</td><td>' + Number(c.adet).toLocaleString('tr-TR') + '</td></tr>';
+    }).join('') : '<tr><td colspan="2">Kayıt yok.</td></tr>';
+
+    var bars = document.getElementById('hourly-bars');
+    var hourly = data.saatlikDagilim || [];
+    var maxAdet = Math.max.apply(null, hourly.map(function(h){ return Number(h.adet); }).concat([1]));
+    var byHour = {};
+    hourly.forEach(function(h){ byHour[Number(h.saat_tr)] = Number(h.adet); });
+    var html = '';
+    for(var s = 0; s < 24; s++){
+      var adet = byHour[s] || 0;
+      var pct = Math.round((adet / maxAdet) * 100);
+      html += '<div style="display:flex; align-items:center; gap:8px; font-size:12px;">' +
+        '<div style="width:32px; color:var(--muted);">' + String(s).padStart(2,'0') + ':00</div>' +
+        '<div style="flex:1; background:var(--muted-soft); border-radius:3px; overflow:hidden;"><div style="width:' + pct + '%; background:var(--accent); height:14px;"></div></div>' +
+        '<div style="width:40px; text-align:right;">' + adet + '</div>' +
+        '</div>';
+    }
+    bars.innerHTML = html;
+  }
+  function loadCapacity(){
+    fetch(WORKER_URL + 'throughput', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderCapacity)
+      .catch(function(err){ document.getElementById('carrier-body').innerHTML = '<tr><td colspan="2">Veri alınamadı: ' + err + '</td></tr>'; });
+  }
+
   loadDashboard();
   loadRisk();
   loadHistory();
+  loadCapacity();
   setInterval(loadDashboard, 60000);
   setInterval(loadRisk, 60000);
   setInterval(loadHistory, 60000);
+  setInterval(loadCapacity, 60000);
 
   var STAGE_ROWS = [
     ['Sipariş oluşturuldu', 'Created_At'],
