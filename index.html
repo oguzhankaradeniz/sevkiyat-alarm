@@ -309,6 +309,14 @@
         <tbody id="examples-body"><tr class="empty-row"><td colspan="5">Yükleniyor…</td></tr></tbody>
       </table>
     </div>
+    <h3 style="font-size:.9rem;margin:22px 0 10px;">En çok biriken ürünler</h3>
+    <div class="note" style="margin-bottom:10px;">Kırmızı+turuncu birikimdeki siparişlerin hangi SKU'lardan oluştuğu — önceliklendirme için (bir SKU/pick-zone sorunu birikimin büyük kısmını açıklıyor olabilir).</div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>SKU</th><th>Ürün Adı</th><th class="num">Sipariş Sayısı</th><th class="num">Toplam Adet</th></tr></thead>
+        <tbody id="top-sku-body"><tr class="empty-row"><td colspan="4">Yükleniyor…</td></tr></tbody>
+      </table>
+    </div>
   </section>
 
   <section class="panel" id="panel-risk" hidden>
@@ -332,6 +340,7 @@
         <h2>Gün ve Geçmiş</h2>
         <p>Saatte bir otomatik olarak kaydedilen anlık görüntülerden. "Bugün" saatlik, "Geçmiş" günlük (o günün en yüksek değeri) — basit, uzun vadede sürdürülebilir bir takip için.</p>
       </div>
+      <div id="staleness-badge" class="updated" style="align-self:flex-start;"><span class="dot" id="staleness-dot"></span><span id="staleness-text">kontrol ediliyor…</span></div>
     </div>
     <h3 style="font-size:.9rem;margin:0 0 10px;">Bugün (saatlik)</h3>
     <div class="table-scroll" style="margin-bottom:22px;">
@@ -457,6 +466,24 @@
       .catch(function(err){ document.getElementById('gen-at').textContent = 'Veri alınamadı: ' + err; });
   }
 
+  function renderTopSku(data){
+    var rows = data.rows || [];
+    document.getElementById('top-sku-body').innerHTML = rows.length ? rows.map(function(r){
+      return '<tr>' +
+        '<td class="mono" data-label="SKU">' + esc(r.sku) + '</td>' +
+        '<td class="name" data-label="Ürün Adı">' + esc(r.urun_adi) + '</td>' +
+        '<td class="num" data-label="Sipariş Sayısı">' + Number(r.siparis_sayisi).toLocaleString('tr-TR') + '</td>' +
+        '<td class="num" data-label="Toplam Adet">' + Number(r.toplam_adet).toLocaleString('tr-TR') + '</td>' +
+        '</tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="4">Kayıt yok.</td></tr>';
+  }
+  function loadTopSku(){
+    fetch(WORKER_URL + 'top-sku?limit=15', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderTopSku)
+      .catch(function(err){ document.getElementById('top-sku-body').innerHTML = '<tr class="empty-row"><td colspan="4">Veri alınamadı: ' + err + '</td></tr>'; });
+  }
+
   var GAP_LABEL = {
     picking_to_packing: 'Toplama bitti, paketleme bekliyor',
     packing_to_slam: 'Paketleme bitti, SLAM bekliyor',
@@ -513,7 +540,22 @@
       METRIC_COLS.map(function(m, i){ return '<td class="num" data-label="' + METRIC_LABELS[i] + '">' + (row.vals[m] !== undefined ? Number(row.vals[m]).toLocaleString('tr-TR') : '—') + '</td>'; }).join('') +
       '</tr>';
   }
+  function renderStaleness(sonSnapshotAt){
+    var dotEl = document.getElementById('staleness-dot');
+    var textEl = document.getElementById('staleness-text');
+    if(!sonSnapshotAt){
+      dotEl.style.background = 'var(--risk)';
+      textEl.textContent = 'Henüz hiç otomatik kayıt yok';
+      return;
+    }
+    var dakika = Math.round((Date.now() - new Date(sonSnapshotAt).getTime()) / 60000);
+    var stale = dakika > 75; // saatlik cron + tampon
+    dotEl.style.background = stale ? 'var(--risk)' : 'var(--ok)';
+    dotEl.style.boxShadow = '0 0 0 3px ' + (stale ? 'var(--risk-soft)' : 'var(--ok-soft)');
+    textEl.textContent = 'Son otomatik kayıt: ' + dakika + ' dk önce' + (stale ? ' — saatlik otomasyon durmuş olabilir!' : '');
+  }
   function renderHistory(data){
+    renderStaleness(data.sonSnapshotAt);
     var todayPivot = pivotByKey(data.today || [], 'captured_at');
     document.getElementById('history-today-body').innerHTML = todayPivot.length
       ? todayPivot.map(function(row){ return historyRowHtml(fmtSaatOnly(row.key), row); }).join('')
@@ -562,10 +604,12 @@
   }
 
   loadDashboard();
+  loadTopSku();
   loadRisk();
   loadHistory();
   loadCapacity();
   setInterval(loadDashboard, 60000);
+  setInterval(loadTopSku, 60000);
   setInterval(loadRisk, 60000);
   setInterval(loadHistory, 60000);
   setInterval(loadCapacity, 60000);
