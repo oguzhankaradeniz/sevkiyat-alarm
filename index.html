@@ -270,6 +270,16 @@
   .pl-kv .v{ font-size:.82rem; font-weight:600; color:var(--ink); }
   .pl-kv .v.empty{ font-weight:400; font-style:italic; color:var(--muted); }
 
+  /* ---- Tamamlanmis (Teslim Edildi/Iptal) siparisler: aktif olanlarin ALTINA, varsayilan
+     kapali kompakt bir bolume tasiniyor -- artik goze batmiyor ama istenirse acilabiliyor. ---- */
+  .pl-done-toggle{ display:flex; align-items:center; gap:8px; padding:10px 14px; margin-top:6px; font-size:.82rem; font-weight:600; color:var(--muted); cursor:pointer; border-top:1px dashed var(--line); user-select:none; }
+  .pl-done-toggle:hover{ color:var(--ink-soft); }
+  .pl-done-toggle .pl-chevron{ transform:rotate(-90deg); }
+  .pl-done-toggle.open .pl-chevron{ transform:rotate(0deg); }
+  .pl-done-list{ display:flex; flex-direction:column; gap:1px; margin-top:4px; }
+  .pl-done-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 14px; font-size:.78rem; opacity:.8; }
+  .pl-done-row .pl-sipno{ color:var(--muted); }
+
   /* ---- Aktif Listeler: az sayida (5-10) liste icin okunabilir kart gorunumu ---- */
   .pl-active-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
   .pl-active-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:8px; transition:border-color .15s ease, transform .15s ease; }
@@ -903,15 +913,44 @@
     '</div>';
   }
 
+  // Tamamlanmis (Teslim Edildi/Iptal) siparisler icin kompakt, tek satirlik satir --
+  // stepper/detay yok, sadece sip no + rozet. "Neden teslim edilmis bir siparis hala
+  // goze batiyor" geri bildiriminin (2026-09-14) cozumu: bunlar artik ayri, varsayilan
+  // KAPALI bir bolume tasiniyor, aktif siparislerle karisik gorunmuyor.
+  function pickListDoneRowHtml(r){
+    return '<div class="pl-done-row"><span class="mono pl-sipno">' + esc(r.sip_no) + '</span>' +
+      '<span class="badge ' + r.tier + '">' + esc(TIER_LABEL[r.tier] || r.tier) + '</span></div>';
+  }
+
   function renderPickListDetail(data, listeAdi){
     document.getElementById('picklist-detail-title').textContent = listeAdi;
     var rows = data.rows || [];
+    // Backend zaten en acilden en tamamlanmisa siraliyor (bkz. worker.js), burada
+    // sadece aktif/tamamlanmis ayrimini yapip iki ayri blok render ediyoruz.
+    var aktif = rows.filter(function(r){ return r.tier !== 'delivered' && r.tier !== 'cancelled'; });
+    var tamam = rows.filter(function(r){ return r.tier === 'delivered' || r.tier === 'cancelled'; });
     var container = document.getElementById('picklist-detail-body');
-    container.innerHTML = rows.length ? rows.map(pickListOrderHtml).join('') : '<div class="note">Kayıt yok.</div>';
+
+    var html = rows.length ? aktif.map(pickListOrderHtml).join('') : '<div class="note">Kayıt yok.</div>';
+    if(tamam.length){
+      html += '<div class="pl-done-toggle" id="pl-done-toggle" role="button" tabindex="0">' +
+        '<span class="pl-chevron">▾</span> Tamamlanan siparişler (' + tamam.length + ')' +
+      '</div>' +
+      '<div class="pl-done-list" id="pl-done-list" hidden>' + tamam.map(pickListDoneRowHtml).join('') + '</div>';
+    }
+    container.innerHTML = html;
     applyStagger(container, '.pl-order', 30);
     container.querySelectorAll('.pl-order').forEach(function(el){
       el.querySelector('.pl-order-head').addEventListener('click', function(){ el.classList.toggle('open'); });
     });
+    var doneToggle = document.getElementById('pl-done-toggle');
+    if(doneToggle){
+      doneToggle.addEventListener('click', function(){
+        var list = document.getElementById('pl-done-list');
+        list.hidden = !list.hidden;
+        doneToggle.classList.toggle('open', !list.hidden);
+      });
+    }
     document.getElementById('picklist-detail').classList.add('show');
     document.getElementById('picklist-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
