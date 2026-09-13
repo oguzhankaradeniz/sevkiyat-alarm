@@ -215,6 +215,34 @@
   .print-btn.primary{ background:linear-gradient(135deg, var(--accent), var(--accent-2)); border-color:transparent; color:#fff; }
   .print-btn.primary:hover{ color:#fff; filter:brightness(1.06); }
 
+  /* ---- Toplama listesi: siparis satirlari + ilerleme cizgisi + acilir detay ---- */
+  .pl-orders{ display:flex; flex-direction:column; gap:8px; }
+  .pl-order{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-sm); box-shadow:var(--shadow); overflow:hidden; transition:border-color .15s ease; }
+  .pl-order:hover{ border-color:color-mix(in srgb, var(--accent) 35%, var(--line)); }
+  .pl-order-head{ display:flex; align-items:center; gap:14px; padding:12px 14px; cursor:pointer; }
+  .pl-order-head .pl-sipno{ flex:none; font-size:.82rem; }
+  .pl-order-head .pl-stepper{ flex:1; min-width:0; }
+  .pl-chevron{ flex:none; color:var(--muted); font-size:.75rem; transition:transform .2s ease; }
+  .pl-order.open .pl-chevron{ transform:rotate(180deg); color:var(--accent); }
+
+  .pl-dots{ display:flex; align-items:center; }
+  .pl-dot{ flex:none; width:11px; height:11px; border-radius:50%; background:var(--surface-alt); border:2px solid var(--line); transition:background .2s ease, border-color .2s ease; }
+  .pl-dot.done{ background:var(--ok); border-color:var(--ok); }
+  .pl-dot.current{ background:var(--risk); border-color:var(--risk); animation:pl-pulse 1.6s infinite; }
+  .pl-line{ flex:1; height:2px; background:var(--line); margin:0 2px; transition:background .2s ease; }
+  .pl-line.done{ background:var(--ok); }
+  @keyframes pl-pulse{ 0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--risk) 55%, transparent); } 70%{ box-shadow:0 0 0 7px transparent; } 100%{ box-shadow:0 0 0 0 transparent; } }
+  .pl-labels{ display:flex; justify-content:space-between; margin-top:5px; }
+  .pl-labels span{ font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; text-align:center; flex:1; }
+
+  .pl-order-detail{ max-height:0; overflow:hidden; transition:max-height .28s ease, padding .28s ease; background:var(--surface-alt); }
+  .pl-order.open .pl-order-detail{ max-height:220px; padding:14px; }
+  .pl-kv-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px 18px; }
+  .pl-kv{ display:flex; flex-direction:column; gap:2px; }
+  .pl-kv .k{ font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .pl-kv .v{ font-size:.82rem; font-weight:600; color:var(--ink); }
+  .pl-kv .v.empty{ font-weight:400; font-style:italic; color:var(--muted); }
+
   @media print{
     @page{ size:A4 landscape; margin:9mm; }
     header.top .updated-group, .stats, .tabbar, .print-btn, .share-overlay, .search-row{ display:none !important; }
@@ -397,12 +425,8 @@
       <div class="result-head">
         <h2 id="picklist-detail-title">—</h2>
       </div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Sipariş No</th><th>Durum</th><th>Oluşturuldu</th><th>Toplama başladı</th><th>Toplama bitti</th><th>Paketleme başladı</th><th>Paketleme bitti</th><th>SLAM başladı</th><th>SLAM bitti</th><th>Dispatch başladı</th><th>Dispatch bitti</th><th>Teslimat</th></tr></thead>
-          <tbody id="picklist-detail-body"><tr class="empty-row"><td colspan="12">Yükleniyor…</td></tr></tbody>
-        </table>
-      </div>
+      <div class="note" style="margin:-6px 0 4px;">Bir siparişe tıklayınca tam zaman damgaları açılır.</div>
+      <div class="pl-orders" id="picklist-detail-body"></div>
     </div>
   </section>
 
@@ -662,32 +686,68 @@
       .catch(function(err){ document.getElementById('picklists-body').innerHTML = '<tr class="empty-row"><td colspan="5">Veri alınamadı: ' + err + '</td></tr>'; });
   }
 
-  var PL_STAGE_COLS = [
-    ['Oluşturuldu', 'Created_At'],
-    ['Toplama başladı', 'Picking_StartedAt'],
-    ['Toplama bitti', 'Picking_CompletedAt'],
-    ['Paketleme başladı', 'Packing_StartedAt'],
-    ['Paketleme bitti', 'Packing_CompletedAt'],
-    ['SLAM başladı', 'SLAM_StartedAt'],
-    ['SLAM bitti', 'SLAM_CompletedAt'],
-    ['Dispatch başladı', 'Dispatch_StartedAt'],
-    ['Dispatch bitti', 'Dispatch_CompletedAt'],
+  // 5 ana asama, her biri icin baslama/bitis alan adlari -- ilerleme cizgisindeki
+  // noktalari ve acilir detaydaki tam zaman damgalarini ayni veriden uretiyoruz.
+  var PL_STAGES = [
+    { lbl: 'Toplama', started: 'Picking_StartedAt', completed: 'Picking_CompletedAt' },
+    { lbl: 'Paketleme', started: 'Packing_StartedAt', completed: 'Packing_CompletedAt' },
+    { lbl: 'SLAM', started: 'SLAM_StartedAt', completed: 'SLAM_CompletedAt' },
+    { lbl: 'Dispatch', started: 'Dispatch_StartedAt', completed: 'Dispatch_CompletedAt' },
+    { lbl: 'Teslimat', started: 'Delivered_At', completed: 'Delivered_At' }
+  ];
+  var PL_DETAIL_FIELDS = [
+    ['Oluşturuldu', 'Created_At'], ['Toplama başladı', 'Picking_StartedAt'], ['Toplama bitti', 'Picking_CompletedAt'],
+    ['Paketleme başladı', 'Packing_StartedAt'], ['Paketleme bitti', 'Packing_CompletedAt'],
+    ['SLAM başladı', 'SLAM_StartedAt'], ['SLAM bitti', 'SLAM_CompletedAt'],
+    ['Dispatch başladı', 'Dispatch_StartedAt'], ['Dispatch bitti', 'Dispatch_CompletedAt'],
     ['Teslimat', 'Delivered_At']
   ];
+
+  function pickListOrderHtml(r, idx){
+    // Her asama icin done/current/pending durumunu hesapla: ilk tamamlanmamis
+    // asama "current" (kirmizi, yanip sonen nokta) -- sureclerin nerede takildigini
+    // gorsel olarak tek bakista gosteriyor.
+    var stageStates = [];
+    var currentAssigned = false;
+    PL_STAGES.forEach(function(stage){
+      var done = !!r[stage.completed];
+      var state;
+      if(done){ state = 'done'; }
+      else if(!currentAssigned){ state = 'current'; currentAssigned = true; }
+      else { state = 'pending'; }
+      stageStates.push(state);
+    });
+
+    var dotsHtml = PL_STAGES.map(function(stage, i){
+      var line = i > 0 ? '<span class="pl-line ' + (stageStates[i-1] === 'done' ? 'done' : '') + '"></span>' : '';
+      return line + '<span class="pl-dot ' + stageStates[i] + '"></span>';
+    }).join('');
+    var labelsHtml = PL_STAGES.map(function(stage){ return '<span>' + stage.lbl + '</span>'; }).join('');
+
+    var kvHtml = PL_DETAIL_FIELDS.map(function(pair){
+      var val = r[pair[1]];
+      return '<div class="pl-kv"><span class="k">' + pair[0] + '</span><span class="v' + (val ? '' : ' empty') + '">' + (val ? fmtDate(val) : 'henüz başlamadı') + '</span></div>';
+    }).join('');
+
+    return '<div class="pl-order" id="pl-order-' + idx + '">' +
+      '<div class="pl-order-head">' +
+        '<span class="mono pl-sipno">' + esc(r.sip_no) + '</span>' +
+        '<div class="pl-stepper"><div class="pl-dots">' + dotsHtml + '</div><div class="pl-labels">' + labelsHtml + '</div></div>' +
+        '<span class="badge ' + r.tier + '">' + esc(TIER_LABEL[r.tier] || r.tier) + '</span>' +
+        '<span class="pl-chevron">▾</span>' +
+      '</div>' +
+      '<div class="pl-order-detail"><div class="pl-kv-grid">' + kvHtml + '</div></div>' +
+    '</div>';
+  }
+
   function renderPickListDetail(data, listeAdi){
     document.getElementById('picklist-detail-title').textContent = listeAdi;
     var rows = data.rows || [];
-    document.getElementById('picklist-detail-body').innerHTML = rows.length ? rows.map(function(r){
-      var cells = PL_STAGE_COLS.map(function(pair){
-        var val = r[pair[1]];
-        return '<td data-label="' + pair[0] + '">' + (val ? fmtDate(val) : '<span style="color:var(--muted);font-style:italic;">henüz başlamadı</span>') + '</td>';
-      }).join('');
-      return '<tr>' +
-        '<td class="mono" data-label="Sipariş No">' + esc(r.sip_no) + '</td>' +
-        '<td data-label="Durum"><span class="badge ' + r.tier + '">' + esc(TIER_LABEL[r.tier] || r.tier) + '</span></td>' +
-        cells +
-        '</tr>';
-    }).join('') : '<tr class="empty-row"><td colspan="12">Kayıt yok.</td></tr>';
+    var container = document.getElementById('picklist-detail-body');
+    container.innerHTML = rows.length ? rows.map(pickListOrderHtml).join('') : '<div class="note">Kayıt yok.</div>';
+    container.querySelectorAll('.pl-order').forEach(function(el){
+      el.querySelector('.pl-order-head').addEventListener('click', function(){ el.classList.toggle('open'); });
+    });
     document.getElementById('picklist-detail').classList.add('show');
     document.getElementById('picklist-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
