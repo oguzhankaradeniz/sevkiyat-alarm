@@ -386,11 +386,23 @@
       </div>
     </div>
     <div class="stats" id="picklists-summary" style="grid-template-columns:1fr; max-width:320px;"></div>
-    <div class="table-scroll" style="margin-top:20px;">
+    <div class="note" style="margin-bottom:8px;">Detayını görmek için bir listeye tıklayın.</div>
+    <div class="table-scroll" style="margin-bottom:22px;">
       <table>
         <thead><tr><th>Liste</th><th>Oluşturuldu</th><th class="num">Toplam Sipariş</th><th class="num">Hâlâ Açık</th><th class="num">Açık Oran</th></tr></thead>
         <tbody id="picklists-body"><tr class="empty-row"><td colspan="5">Yükleniyor…</td></tr></tbody>
       </table>
+    </div>
+    <div id="picklist-detail" class="result">
+      <div class="result-head">
+        <h2 id="picklist-detail-title">—</h2>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Sipariş No</th><th>Durum</th><th>Toplama</th><th>Paketleme</th><th>SLAM</th><th>Dispatch</th><th>Teslimat</th></tr></thead>
+          <tbody id="picklist-detail-body"><tr class="empty-row"><td colspan="7">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -630,7 +642,7 @@
 
     var rows = data.rows || [];
     document.getElementById('picklists-body').innerHTML = rows.length ? rows.map(function(r){
-      return '<tr>' +
+      return '<tr class="picklist-row" data-id="' + esc(r.Id) + '" data-name="' + esc(r.liste_adi) + '" style="cursor:pointer;">' +
         '<td class="name" data-label="Liste">' + esc(r.liste_adi) + '</td>' +
         '<td data-label="Oluşturuldu">' + fmtDate(r.olusturuldu) + '</td>' +
         '<td class="num" data-label="Toplam Sipariş">' + Number(r.toplam_siparis).toLocaleString('tr-TR') + '</td>' +
@@ -638,12 +650,49 @@
         '<td class="num" data-label="Açık Oran"><span class="badge kirmizi">%' + Number(r.acik_oran).toLocaleString('tr-TR') + '</span></td>' +
         '</tr>';
     }).join('') : '<tr class="empty-row"><td colspan="5">Kayıt yok.</td></tr>';
+
+    document.querySelectorAll('.picklist-row').forEach(function(tr){
+      tr.addEventListener('click', function(){ loadPickListDetail(tr.getAttribute('data-id'), tr.getAttribute('data-name')); });
+    });
   }
   function loadPickLists(){
     fetch(WORKER_URL + 'pick-lists?limit=20', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderPickLists)
       .catch(function(err){ document.getElementById('picklists-body').innerHTML = '<tr class="empty-row"><td colspan="5">Veri alınamadı: ' + err + '</td></tr>'; });
+  }
+
+  var PL_STAGE_COLS = [
+    ['Toplama', 'Picking_CompletedAt'],
+    ['Paketleme', 'Packing_CompletedAt'],
+    ['SLAM', 'SLAM_CompletedAt'],
+    ['Dispatch', 'Dispatch_CompletedAt'],
+    ['Teslimat', 'Delivered_At']
+  ];
+  function renderPickListDetail(data, listeAdi){
+    document.getElementById('picklist-detail-title').textContent = listeAdi;
+    var rows = data.rows || [];
+    document.getElementById('picklist-detail-body').innerHTML = rows.length ? rows.map(function(r){
+      var cells = PL_STAGE_COLS.map(function(pair){
+        var val = r[pair[1]];
+        return '<td data-label="' + pair[0] + '">' + (val ? fmtDate(val) : '<span style="color:var(--muted);font-style:italic;">henüz başlamadı</span>') + '</td>';
+      }).join('');
+      return '<tr>' +
+        '<td class="mono" data-label="Sipariş No">' + esc(r.sip_no) + '</td>' +
+        '<td data-label="Durum"><span class="badge ' + r.tier + '">' + esc(TIER_LABEL[r.tier] || r.tier) + '</span></td>' +
+        cells +
+        '</tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="7">Kayıt yok.</td></tr>';
+    document.getElementById('picklist-detail').classList.add('show');
+    document.getElementById('picklist-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function loadPickListDetail(id, listeAdi){
+    document.getElementById('picklist-detail').classList.add('show');
+    document.getElementById('picklist-detail-title').textContent = listeAdi + ' — yükleniyor…';
+    fetch(WORKER_URL + 'pick-list-detail?id=' + encodeURIComponent(id), { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(data){ renderPickListDetail(data, listeAdi); })
+      .catch(function(err){ document.getElementById('picklist-detail-title').textContent = 'Veri alınamadı: ' + err; });
   }
 
   loadDashboard();
