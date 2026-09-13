@@ -916,14 +916,22 @@
     // TEK TEK GORUNTULENMIYOR (onceki halde kapali bir bolumde bile olsa tikla-ac
     // vardi, o bile gereksizdi). Sadece kac tanesinin tamamlandigini gosteren tek
     // satirlik notla yetiniyoruz, kart/rozet yok.
-    var aktif = rows.filter(function(r){ return r.tier !== 'delivered' && r.tier !== 'cancelled'; });
+    //
+    // DUZELTME (2026-09-14, ayni gun ikinci tur): "kargoda_yolda" (kargo firmasina
+    // teslim edilmis, artik sahada degil) da GORMEK ISTEMEDIGI kategoriye dahil --
+    // kullanici "Kargoda/yolda" rozetli bir siparisin hala kart olarak gorundugunu
+    // gosterdi. Depo/floor acisindan is bitmis sayilir (worker.js'deki "floor degil"
+    // yorumuyla tutarli), o yuzden delivered/cancelled ile ayni sekilde sadece sayi
+    // olarak ozetleniyor, kart olarak gosterilmiyor.
+    var PL_TAMAMLANMIS_TIER = { delivered: true, cancelled: true, kargoda_yolda: true };
+    var aktif = rows.filter(function(r){ return !PL_TAMAMLANMIS_TIER[r.tier]; });
     var tamamSayisi = rows.length - aktif.length;
     var container = document.getElementById('picklist-detail-body');
 
     var html = aktif.length ? aktif.map(pickListOrderHtml).join('')
       : (rows.length ? '<div class="note">Bu listede tamamlanmamış sipariş kalmadı.</div>' : '<div class="note">Kayıt yok.</div>');
     if(tamamSayisi > 0){
-      html += '<div class="pl-done-note">✓ ' + tamamSayisi + ' sipariş zaten tamamlanmış (teslim edildi/iptal) — gösterilmiyor</div>';
+      html += '<div class="pl-done-note">✓ ' + tamamSayisi + ' sipariş zaten tamamlanmış veya sahadan çıkmış (teslim edildi/iptal/kargoda) — gösterilmiyor</div>';
     }
     container.innerHTML = html;
     applyStagger(container, '.pl-order', 30);
