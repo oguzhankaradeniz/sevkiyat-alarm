@@ -399,8 +399,8 @@
       </div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Sipariş No</th><th>Durum</th><th>Toplama</th><th>Paketleme</th><th>SLAM</th><th>Dispatch</th><th>Teslimat</th></tr></thead>
-          <tbody id="picklist-detail-body"><tr class="empty-row"><td colspan="7">Yükleniyor…</td></tr></tbody>
+          <thead><tr><th>Sipariş No</th><th>Durum</th><th>Oluşturuldu</th><th>Toplama başladı</th><th>Toplama bitti</th><th>Paketleme başladı</th><th>Paketleme bitti</th><th>SLAM başladı</th><th>SLAM bitti</th><th>Dispatch başladı</th><th>Dispatch bitti</th><th>Teslimat</th></tr></thead>
+          <tbody id="picklist-detail-body"><tr class="empty-row"><td colspan="12">Yükleniyor…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -663,10 +663,15 @@
   }
 
   var PL_STAGE_COLS = [
-    ['Toplama', 'Picking_CompletedAt'],
-    ['Paketleme', 'Packing_CompletedAt'],
-    ['SLAM', 'SLAM_CompletedAt'],
-    ['Dispatch', 'Dispatch_CompletedAt'],
+    ['Oluşturuldu', 'Created_At'],
+    ['Toplama başladı', 'Picking_StartedAt'],
+    ['Toplama bitti', 'Picking_CompletedAt'],
+    ['Paketleme başladı', 'Packing_StartedAt'],
+    ['Paketleme bitti', 'Packing_CompletedAt'],
+    ['SLAM başladı', 'SLAM_StartedAt'],
+    ['SLAM bitti', 'SLAM_CompletedAt'],
+    ['Dispatch başladı', 'Dispatch_StartedAt'],
+    ['Dispatch bitti', 'Dispatch_CompletedAt'],
     ['Teslimat', 'Delivered_At']
   ];
   function renderPickListDetail(data, listeAdi){
@@ -682,7 +687,7 @@
         '<td data-label="Durum"><span class="badge ' + r.tier + '">' + esc(TIER_LABEL[r.tier] || r.tier) + '</span></td>' +
         cells +
         '</tr>';
-    }).join('') : '<tr class="empty-row"><td colspan="7">Kayıt yok.</td></tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="12">Kayıt yok.</td></tr>';
     document.getElementById('picklist-detail').classList.add('show');
     document.getElementById('picklist-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
