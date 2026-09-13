@@ -293,6 +293,7 @@
     <button class="tabbtn" type="button" role="tab" data-tab="risk" id="tab-risk" aria-selected="false">Riskli Takip</button>
     <button class="tabbtn" type="button" role="tab" data-tab="history" id="tab-history" aria-selected="false">Gün ve Geçmiş</button>
     <button class="tabbtn" type="button" role="tab" data-tab="capacity" id="tab-capacity" aria-selected="false">Kapasite</button>
+    <button class="tabbtn" type="button" role="tab" data-tab="picklists" id="tab-picklists" aria-selected="false">Toplama Listeleri</button>
     <button class="tabbtn" type="button" role="tab" data-tab="lookup" id="tab-lookup" aria-selected="false">Sipariş Ara</button>
   </div>
 
@@ -377,6 +378,22 @@
     <div id="hourly-bars" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px;"></div>
   </section>
 
+  <section class="panel" id="panel-picklists" hidden>
+    <div class="panel-head">
+      <div>
+        <h2>Toplama Listeleri</h2>
+        <p>Bir toplama listesinin toplaması bitince "iş bitti" sayılıyor, ama listedeki siparişlerin asıl akıbeti (paketleme/SLAM/dispatch/teslimat) ayrıca takip edilmiyor. Burada 1-7 gün önce açılmış, toplaması tamamlanmış listelerin içindeki siparişlerden kaçının hâlâ çözülmediği gösteriliyor — en eski/en çok unutulan liste en üstte.</p>
+      </div>
+    </div>
+    <div class="stats" id="picklists-summary" style="grid-template-columns:1fr; max-width:320px;"></div>
+    <div class="table-scroll" style="margin-top:20px;">
+      <table>
+        <thead><tr><th>Liste</th><th>Oluşturuldu</th><th class="num">Toplam Sipariş</th><th class="num">Hâlâ Açık</th><th class="num">Açık Oran</th></tr></thead>
+        <tbody id="picklists-body"><tr class="empty-row"><td colspan="5">Yükleniyor…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="panel" id="panel-lookup" hidden>
     <div class="panel-head">
       <div>
@@ -421,10 +438,10 @@
 
   // ---- Tab switching ----
   var activeTab = 'dashboard';
-  var tabTitles = { dashboard:'Genel Durum', risk:'Riskli Takip', history:'Gün ve Geçmiş', capacity:'Kapasite', lookup:'Sipariş Ara' };
+  var tabTitles = { dashboard:'Genel Durum', risk:'Riskli Takip', history:'Gün ve Geçmiş', capacity:'Kapasite', picklists:'Toplama Listeleri', lookup:'Sipariş Ara' };
   function selectTab(name){
     activeTab = name;
-    ['dashboard','risk','history','capacity','lookup'].forEach(function(key){
+    ['dashboard','risk','history','capacity','picklists','lookup'].forEach(function(key){
       var isActive = key === name;
       document.getElementById('panel-' + key).hidden = !isActive;
       document.getElementById('tab-' + key).setAttribute('aria-selected', String(isActive));
@@ -603,16 +620,44 @@
       .catch(function(err){ document.getElementById('carrier-body').innerHTML = '<tr class="empty-row"><td colspan="2">Veri alınamadı: ' + err + '</td></tr>'; });
   }
 
+  function renderPickLists(data){
+    var summary = data.summary || { toplam_siparis: 0, hala_acik: 0 };
+    var toplam = Number(summary.toplam_siparis);
+    var acik = Number(summary.hala_acik);
+    var oran = toplam ? Math.round((acik / toplam) * 1000) / 10 : 0;
+    document.getElementById('picklists-summary').innerHTML =
+      '<div class="stat kirmizi"><div class="n">%' + oran.toLocaleString('tr-TR') + '</div><div class="l">Son 7 günün (1+ gün eski) listelerinde hâlâ açık oranı — ' + acik.toLocaleString('tr-TR') + ' / ' + toplam.toLocaleString('tr-TR') + ' sipariş</div></div>';
+
+    var rows = data.rows || [];
+    document.getElementById('picklists-body').innerHTML = rows.length ? rows.map(function(r){
+      return '<tr>' +
+        '<td class="name" data-label="Liste">' + esc(r.liste_adi) + '</td>' +
+        '<td data-label="Oluşturuldu">' + fmtDate(r.olusturuldu) + '</td>' +
+        '<td class="num" data-label="Toplam Sipariş">' + Number(r.toplam_siparis).toLocaleString('tr-TR') + '</td>' +
+        '<td class="num" data-label="Hâlâ Açık">' + Number(r.hala_acik).toLocaleString('tr-TR') + '</td>' +
+        '<td class="num" data-label="Açık Oran"><span class="badge kirmizi">%' + Number(r.acik_oran).toLocaleString('tr-TR') + '</span></td>' +
+        '</tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="5">Kayıt yok.</td></tr>';
+  }
+  function loadPickLists(){
+    fetch(WORKER_URL + 'pick-lists?limit=20', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderPickLists)
+      .catch(function(err){ document.getElementById('picklists-body').innerHTML = '<tr class="empty-row"><td colspan="5">Veri alınamadı: ' + err + '</td></tr>'; });
+  }
+
   loadDashboard();
   loadTopSku();
   loadRisk();
   loadHistory();
   loadCapacity();
+  loadPickLists();
   setInterval(loadDashboard, 60000);
   setInterval(loadTopSku, 60000);
   setInterval(loadRisk, 60000);
   setInterval(loadHistory, 60000);
   setInterval(loadCapacity, 60000);
+  setInterval(loadPickLists, 60000);
 
   var STAGE_ROWS = [
     ['Sipariş oluşturuldu', 'Created_At'],
