@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sevkiyat Takip — L2-L3</title>
 <style>
+  .ops-nav{ display:flex; gap:16px; max-width:900px; margin:0 auto; padding:10px 16px 0; font:600 12px system-ui,-apple-system,'Segoe UI',sans-serif; }
+  .ops-nav a{ text-decoration:none; color:#78867F; padding-bottom:6px; border-bottom:2px solid transparent; }
+  .ops-nav a.active{ color:#2F6F5E; border-bottom-color:#2F6F5E; }
   :root{
     --paper:#F1F3EF; --surface:#FFFFFF; --ink:#172420; --ink2:#47554F; --muted:#78867F;
     --line:#DCE1D7; --line-strong:#B9C2B4; --accent:#2F6F5E;
@@ -65,10 +68,14 @@
 </style>
 </head>
 <body>
+<nav class="ops-nav">
+  <a href="../">TÜBİTAK Besleme</a>
+  <a href="./" class="active">Sevkiyat L2-L3</a>
+</nav>
 <div class="wrap">
   <header>
     <h1>Sevkiyat Takip</h1>
-    <div class="sub">MAD / Tübitak / TRTmarket / Lidya · <span id="gen-at">yükleniyor…</span></div>
+    <div class="sub">MAD Parfum · B2C (Marketplace) · <span id="gen-at">yükleniyor…</span></div>
   </header>
 
   <div class="tabs">
