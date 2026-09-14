@@ -83,7 +83,7 @@
   }
   .stat .n{ font-weight:800; font-size:2.1rem; line-height:1; letter-spacing:-.03em; font-variant-numeric:tabular-nums; color:var(--ink); }
   .stat .l{ margin-top:7px; font-size:.82rem; color:var(--muted); max-width:26ch; line-height:1.35; }
-  .stat.kirmizi .n{ color:var(--risk); } .stat.turuncu .n{ color:var(--warn); }
+  .stat.kirmizi .n{ color:var(--risk); } .stat.turuncu .n, .stat.sari .n{ color:var(--warn); }
 
   /* ---- Animasyonlar: giris + sayi sayma. prefers-reduced-motion'a saygili. ---- */
   @keyframes fadeSlideUp{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:translateY(0); } }
@@ -427,7 +427,7 @@
       </table>
     </div>
     <h3 style="font-size:.9rem;margin:22px 0 10px;">En çok biriken ürünler</h3>
-    <div class="note" style="margin-bottom:10px;">Kırmızı+turuncu birikimdeki siparişlerin hangi SKU'lardan oluştuğu — önceliklendirme için (bir SKU/pick-zone sorunu birikimin büyük kısmını açıklıyor olabilir).</div>
+    <div class="note" style="margin-bottom:10px;">Kırmızı (cutoff kaçmış) birikimdeki siparişlerin hangi SKU'lardan oluştuğu — önceliklendirme için (bir SKU/pick-zone sorunu birikimin büyük kısmını açıklıyor olabilir).</div>
     <div class="table-scroll">
       <table>
         <thead><tr><th>SKU</th><th>Ürün Adı</th><th class="num">Sipariş Sayısı</th><th class="num">Toplam Adet</th></tr></thead>
@@ -621,13 +621,17 @@
     location.reload();
   });
 
+  // "turuncu" tier'i kaldirildi (2026-09-14): cutoff kacinca artik ARA ADIM
+  // olmadan dogrudan "kirmizi" sayiliyor (kullanici: "cutoff kacinca hemen
+  // kritik olsun"). Dashboard'daki eski turuncu kart yerini "sari" (cutoff
+  // yaklasiyor, henuz kacmadi) aldi -- bkz. worker.js baseCte.
   var TIER_LABEL = {
-    kirmizi: 'Kritik — sahada', turuncu: 'Cutoff kaçtı', sari: 'Cutoff yaklaşıyor',
+    kirmizi: 'Kritik — cutoff kaçtı', sari: 'Cutoff yaklaşıyor',
     zamaninda: 'Zamanında', kargoda_yolda: 'Kargoda / yolda', anomali: 'Veri anomalisi',
     delivered: 'Teslim edildi', cancelled: 'İptal edildi'
   };
-  var CARD_ORDER = ['kirmizi','turuncu','kargoda_yolda','anomali'];
-  var CARD_LABEL = { kirmizi:'Kritik', turuncu:'Cutoff kaçtı', kargoda_yolda:'Kargoda/yolda', anomali:'Anomali' };
+  var CARD_ORDER = ['kirmizi','sari','kargoda_yolda','anomali'];
+  var CARD_LABEL = { kirmizi:'Kritik — cutoff kaçtı', sari:'Cutoff yaklaşıyor', kargoda_yolda:'Kargoda/yolda', anomali:'Anomali' };
 
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmtHrs(h){
@@ -782,8 +786,11 @@
       .catch(function(err){ document.getElementById('risk-body').innerHTML = '<tr class="empty-row"><td colspan="6">Veri alınamadı: ' + err + '</td></tr>'; });
   }
 
-  var METRIC_COLS = ['kirmizi', 'turuncu', 'kargoda_yolda', 'anomali', 'riskli_gecis'];
-  var METRIC_LABELS = ['Kritik','Cutoff kaçtı','Kargoda/yolda','Anomali','Riskli geçiş'];
+  // Not: bu tabloda 2026-09-14'ten ONCEKI gunlerin verisi hala "turuncu" metrigi
+  // altinda kayitli (eski esik sistemi) -- o gunler icin "Cutoff yaklaşıyor"
+  // sutunu bos gorunur, bu beklenen bir kirilma (kurallar degisti).
+  var METRIC_COLS = ['kirmizi', 'sari', 'kargoda_yolda', 'anomali', 'riskli_gecis'];
+  var METRIC_LABELS = ['Kritik','Cutoff yaklaşıyor','Kargoda/yolda','Anomali','Riskli geçiş'];
 
   function pivotByKey(rows, keyField){
     var byKey = {}; var order = [];
