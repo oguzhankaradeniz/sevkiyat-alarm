@@ -440,7 +440,7 @@
     <div class="panel-head">
       <div>
         <h2>Riskli Takip</h2>
-        <p>Cutoff'a bakmaksızın: her sipariş şu an bulunduğu <b>tek bir aşamada</b> (toplama bitti→paketleme, paketleme bitti→SLAM, SLAM bitti→dispatch) ne kadar süredir takılı, o geçiş için o müşterinin normal (p99) süresine göre kaç kat uzun. 1'in üzeri = o geçiş için olağandışı — cutoff'a daha günler olsa bile erken uyarı.</p>
+        <p>Cutoff'a bakmaksızın: her sipariş şu an bulunduğu <b>tek bir aşamada</b> (toplama bitti→paketleme, paketleme bitti→SLAM, etiketlendi→sortera girdi, sortera girdi→kargo firması aldı) ne kadar süredir takılı, o geçiş için beklenen süreye (ilk ikisi p99, son ikisi 1 saatlik iş kuralı) göre kaç kat uzun. 1'in üzeri = olağandışı. "Sortera girdi→kargo aldı" kontrolü sadece saat 18:00'e kadar aktif (kargo firması sahada değilken anlamsız alarm üretmesin diye).</p>
       </div>
     </div>
     <div class="table-scroll">
@@ -747,7 +747,8 @@
   var GAP_LABEL = {
     picking_to_packing: 'Toplama bitti, paketleme bekliyor',
     packing_to_slam: 'Paketleme bitti, SLAM bekliyor',
-    slam_to_dispatch: 'SLAM bitti, sahada dispatch bekliyor'
+    slam_to_dispatch: 'Etiketlendi, sortera girmedi',
+    sortera_kargo_almadi: 'Sortera girdi, kargo firması almadı'
   };
   function fmtDakikaSaat(dk){
     if(dk === undefined || dk === null) return '—';
