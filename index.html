@@ -238,6 +238,20 @@
   .share-copy-btn, .share-close-btn{ font-size:.82rem; font-weight:600; padding:9px 13px; border-radius:var(--radius-sm); border:1px solid var(--line); background:var(--surface-alt); color:var(--ink-soft); cursor:pointer; }
   .share-copy-btn:hover, .share-close-btn:hover{ border-color:var(--accent); color:var(--accent-ink); }
   .share-close-btn{ margin-top:8px; width:100%; }
+
+  /* ---- Giris ekrani: sirket disariya acik bir sistemi kabul etmedi (2026-09-14) ---- */
+  .auth-gate{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; background:var(--bg); }
+  .auth-gate[hidden]{ display:none; }
+  .auth-card{ background:var(--surface); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); padding:32px 28px; max-width:340px; width:100%; text-align:center; display:flex; flex-direction:column; gap:12px; }
+  .auth-card .brand-mark{ margin:0 auto 4px; }
+  .auth-card h1{ font-size:1.3rem; margin:0; letter-spacing:-.01em; }
+  .auth-card p{ font-size:.84rem; color:var(--muted); margin:0 0 6px; line-height:1.5; }
+  .auth-card input{ font:inherit; font-size:.92rem; padding:11px 13px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface-alt); color:var(--ink); }
+  .auth-card input::placeholder{ color:var(--muted); }
+  .auth-card input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .auth-card button{ font-size:.92rem; font-weight:700; padding:11px 13px; border-radius:var(--radius-sm); border:none; background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff; cursor:pointer; }
+  .auth-card button:disabled{ opacity:.6; cursor:default; }
+  .auth-error{ font-size:.82rem; color:var(--risk); min-height:1.2em; }
   .share-note{ font-size:.74rem; color:var(--muted); margin-top:14px; line-height:1.5; text-align:left; }
 
   .print-btn{
@@ -335,12 +349,24 @@
 </style>
 </head>
 <body>
-<nav class="ops-nav">
+<div class="auth-gate" id="auth-gate">
+  <form class="auth-card" id="auth-form">
+    <div class="brand-mark" aria-hidden="true">SV</div>
+    <h1>Giriş yap</h1>
+    <p>Bu panel artık sadece yetkili kullanıcılara açık.</p>
+    <input type="text" id="auth-username" placeholder="Kullanıcı adı" autocomplete="username" required>
+    <input type="password" id="auth-password" placeholder="Şifre" autocomplete="current-password" required>
+    <button type="submit" id="auth-submit">Giriş yap</button>
+    <div class="auth-error" id="auth-error"></div>
+  </form>
+</div>
+
+<nav class="ops-nav" id="ops-nav" hidden>
   <a href="../">TÜBİTAK Besleme</a>
   <a href="./" class="active">Sevkiyat L2-L3</a>
 </nav>
 
-<div class="wrap">
+<div class="wrap" id="app-wrap" hidden>
 
   <header class="top">
     <div class="brand">
@@ -357,6 +383,7 @@
       <div class="btn-row">
         <button class="print-btn" type="button" id="share-btn">📱 Paylaş</button>
         <button class="print-btn primary" type="button" id="print-btn">🖨️ Yazdır</button>
+        <button class="print-btn" type="button" id="auth-logout-btn">🔒 Çıkış</button>
       </div>
     </div>
   </header>
@@ -370,7 +397,7 @@
         <input type="text" id="share-link-input" readonly>
         <button class="share-copy-btn" type="button" id="share-copy-btn">Kopyala</button>
       </div>
-      <div class="share-note">Bu link herkese açıktır — hesap gerekmez.</div>
+      <div class="share-note">Bu linki açan kişinin de kendi kullanıcı adı/şifresiyle giriş yapması gerekir.</div>
       <button class="share-close-btn" type="button" id="share-close-btn">Kapat</button>
     </div>
   </div>
@@ -519,6 +546,81 @@
 <script>
   var WORKER_URL = 'https://sevkiyat-alarm-api.oguzhan-kdeniz.workers.dev/';
 
+  // ---- Giris (2026-09-14): sirket disariya acik/parolasiz bir sistemi kabul
+  // etmedi. AUTH_KEY, kardes panelin (TUBITAK Besleme, ayni GitHub Pages origin'i
+  // altinda) kullandigi anahtarla AYNI -- tek girisle iki panel de aciliyor
+  // (paylasilan localStorage + paylasilan sunucu-tarafi AUTH_SECRET). Oturum 1
+  // saat sonra kendiliginden gecersiz olur, kullanicidan tekrar sifre istenir.
+  var AUTH_KEY = 'panel_ailesi_oturum_v1';
+  function getAuthSession(){
+    try{
+      var raw = localStorage.getItem(AUTH_KEY);
+      if(!raw) return null;
+      var s = JSON.parse(raw);
+      if(!s || !s.token || !s.expiresAt || Date.now() >= s.expiresAt) return null;
+      return s;
+    } catch(e){ return null; }
+  }
+  function setAuthSession(s){ try{ localStorage.setItem(AUTH_KEY, JSON.stringify(s)); }catch(e){} }
+  function clearAuthSession(){ try{ localStorage.removeItem(AUTH_KEY); }catch(e){} }
+
+  function showAuthGate(){
+    document.getElementById('auth-gate').hidden = false;
+    document.getElementById('ops-nav').hidden = true;
+    document.getElementById('app-wrap').hidden = true;
+  }
+  function showApp(){
+    document.getElementById('auth-gate').hidden = true;
+    document.getElementById('ops-nav').hidden = false;
+    document.getElementById('app-wrap').hidden = false;
+  }
+
+  // Tum veri ceken fetch()'lerin ortak gectigi nokta: Authorization basligini ekler,
+  // 401 donerse (oturum yok/suresi dolmus) oturumu temizleyip giris ekranina doner.
+  function authedFetch(url, opts){
+    opts = opts || {};
+    var session = getAuthSession();
+    if(!session){ showAuthGate(); return Promise.reject(new Error('Oturum yok')); }
+    opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + session.token });
+    return fetch(url, opts).then(function(r){
+      if(r.status === 401){
+        clearAuthSession();
+        showAuthGate();
+        throw new Error('Oturum süresi doldu, tekrar giriş yapın.');
+      }
+      return r;
+    });
+  }
+
+  document.getElementById('auth-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var username = document.getElementById('auth-username').value.trim();
+    var password = document.getElementById('auth-password').value;
+    var errorEl = document.getElementById('auth-error');
+    var btn = document.getElementById('auth-submit');
+    if(!username || !password){ errorEl.textContent = 'Kullanıcı adı ve şifre girin.'; return; }
+    btn.disabled = true; errorEl.textContent = '';
+    fetch(WORKER_URL + 'login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username, password: password }),
+    })
+      .then(function(r){ return r.json().then(function(data){ return { ok: r.ok, data: data }; }); })
+      .then(function(res){
+        if(!res.ok){ errorEl.textContent = res.data.error || 'Giriş başarısız.'; return; }
+        setAuthSession(res.data);
+        document.getElementById('auth-password').value = '';
+        showApp();
+        startApp();
+      })
+      .catch(function(err){ errorEl.textContent = 'Bağlantı hatası: ' + err; })
+      .finally(function(){ btn.disabled = false; });
+  });
+  document.getElementById('auth-logout-btn').addEventListener('click', function(){
+    clearAuthSession();
+    location.reload();
+  });
+
   var TIER_LABEL = {
     kirmizi: 'Kritik — sahada', turuncu: 'Cutoff kaçtı', sari: 'Cutoff yaklaşıyor',
     zamaninda: 'Zamanında', kargoda_yolda: 'Kargoda / yolda', anomali: 'Veri anomalisi',
@@ -612,7 +714,7 @@
   }
 
   function loadDashboard(){
-    fetch(WORKER_URL + '?limit=30', { cache: 'no-store' })
+    authedFetch(WORKER_URL + '?limit=30', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderDashboard)
       .catch(function(err){ document.getElementById('gen-at').textContent = 'Veri alınamadı: ' + err; });
@@ -632,7 +734,7 @@
     applyStagger(body, 'tr', 20);
   }
   function loadTopSku(){
-    fetch(WORKER_URL + 'top-sku?limit=15', { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'top-sku?limit=15', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderTopSku)
       .catch(function(err){ document.getElementById('top-sku-body').innerHTML = '<tr class="empty-row"><td colspan="4">Veri alınamadı: ' + err + '</td></tr>'; });
@@ -674,7 +776,7 @@
     applyStagger(body, 'tr', 20);
   }
   function loadRisk(){
-    fetch(WORKER_URL + 'risk?limit=15', { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'risk?limit=15', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderRisk)
       .catch(function(err){ document.getElementById('risk-body').innerHTML = '<tr class="empty-row"><td colspan="6">Veri alınamadı: ' + err + '</td></tr>'; });
@@ -732,7 +834,7 @@
     applyStagger(dailyBody, 'tr', 15);
   }
   function loadHistory(){
-    fetch(WORKER_URL + 'history', { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'history', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderHistory)
       .catch(function(err){ document.getElementById('history-today-body').innerHTML = '<tr class="empty-row"><td colspan="6">Veri alınamadı: ' + err + '</td></tr>'; });
@@ -767,7 +869,7 @@
     applyStagger(barsEl, '.fill', 15);
   }
   function loadCapacity(){
-    fetch(WORKER_URL + 'throughput', { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'throughput', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderCapacity)
       .catch(function(err){ document.getElementById('carrier-body').innerHTML = '<tr class="empty-row"><td colspan="2">Veri alınamadı: ' + err + '</td></tr>'; });
@@ -848,14 +950,14 @@
     });
   }
   function loadActivePickLists(){
-    fetch(WORKER_URL + 'pick-lists-active?limit=10', { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'pick-lists-active?limit=10', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderActivePickLists)
       .catch(function(err){ document.getElementById('pl-active-grid').innerHTML = '<div class="note">Veri alınamadı: ' + err + '</div>'; });
   }
 
   function loadPickLists(){
-    fetch(WORKER_URL + 'pick-lists?limit=20', { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'pick-lists?limit=20', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderPickLists)
       .catch(function(err){ document.getElementById('picklists-body').innerHTML = '<tr class="empty-row"><td colspan="5">Veri alınamadı: ' + err + '</td></tr>'; });
@@ -951,26 +1053,34 @@
   function loadPickListDetail(id, listeAdi){
     document.getElementById('picklist-detail').classList.add('show');
     document.getElementById('picklist-detail-title').textContent = listeAdi + ' — yükleniyor…';
-    fetch(WORKER_URL + 'pick-list-detail?id=' + encodeURIComponent(id), { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'pick-list-detail?id=' + encodeURIComponent(id), { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(data){ renderPickListDetail(data, listeAdi); })
       .catch(function(err){ document.getElementById('picklist-detail-title').textContent = 'Veri alınamadı: ' + err; });
   }
 
-  loadDashboard();
-  loadTopSku();
-  loadRisk();
-  loadHistory();
-  loadCapacity();
-  loadActivePickLists();
-  loadPickLists();
-  setInterval(loadDashboard, 60000);
-  setInterval(loadTopSku, 60000);
-  setInterval(loadRisk, 60000);
-  setInterval(loadHistory, 60000);
-  setInterval(loadCapacity, 60000);
-  setInterval(loadActivePickLists, 60000);
-  setInterval(loadPickLists, 60000);
+  // Oturum acilana kadar hicbir veri cekilmez -- bkz. yukaridaki auth blogu.
+  // startApp() ya sayfa yuklenirken (gecerli bir oturum zaten varsa) ya da basarili
+  // girisin hemen ardindan cagrilir, ikisinden sadece biri, hicbir zaman iki kez degil.
+  var _appStarted = false;
+  function startApp(){
+    if(_appStarted) return;
+    _appStarted = true;
+    loadDashboard();
+    loadTopSku();
+    loadRisk();
+    loadHistory();
+    loadCapacity();
+    loadActivePickLists();
+    loadPickLists();
+    setInterval(loadDashboard, 60000);
+    setInterval(loadTopSku, 60000);
+    setInterval(loadRisk, 60000);
+    setInterval(loadHistory, 60000);
+    setInterval(loadCapacity, 60000);
+    setInterval(loadActivePickLists, 60000);
+    setInterval(loadPickLists, 60000);
+  }
 
   var STAGE_ROWS = [
     ['Sipariş oluşturuldu', 'Created_At'],
@@ -1025,7 +1135,7 @@
     if(!sipNolar.length){ errorEl.textContent = 'Sipariş no girin.'; return; }
     var btn = document.getElementById('sip-btn');
     btn.disabled = true; errorEl.textContent = '';
-    fetch(WORKER_URL + 'lookup?sip_no=' + encodeURIComponent(sipNolar.join(',')), { cache: 'no-store' })
+    authedFetch(WORKER_URL + 'lookup?sip_no=' + encodeURIComponent(sipNolar.join(',')), { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderLookup)
       .catch(function(err){ errorEl.textContent = 'Sorgu başarısız: ' + err; })
@@ -1073,6 +1183,14 @@
       }, fallback);
     } else { fallback(); }
   });
+
+  // Sayfa ilk acildiginda: gecerli (suresi dolmamis) bir oturum varsa dogrudan
+  // uygulamayi goster, yoksa giris ekraninda kal.
+  (function(){
+    var session = getAuthSession();
+    if(session){ showApp(); startApp(); }
+    else { showAuthGate(); }
+  })();
 </script>
 </body>
 </html>
