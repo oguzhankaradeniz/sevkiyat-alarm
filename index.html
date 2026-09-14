@@ -175,6 +175,13 @@
   }
   button.action-btn:disabled{ opacity:.5; cursor:default; }
 
+  /* Coklu sipariş arama: her sonuc kendi ".result" kartinda, alt alta diziliyor
+     (kullanici, 2026-09-14: "kaç sipariş birden aranıyorsa altta onların kartını
+     çıkartmalısın"). */
+  .lookup-results{ display:flex; flex-direction:column; gap:14px; }
+  .result.notfound{ color:var(--muted); }
+  .result.notfound .note{ margin:0; }
+
   .result{
     background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
     padding:20px; display:none; flex-direction:column; gap:14px;
@@ -494,15 +501,15 @@
     <div class="panel-head">
       <div>
         <h2>Sipariş Ara</h2>
-        <p>Sipariş no gir, tam aşama geçmişini gör.</p>
+        <p>Sipariş no gir, tam aşama geçmişini gör. Birden fazla sipariş için aralarına boşluk veya virgül koyarak hepsini tek seferde yapıştırabilirsin.</p>
       </div>
     </div>
     <div class="search-row">
-      <input type="text" id="sip-input" placeholder="Sipariş no (ör. 1-S-4-260437_1)">
+      <input type="text" id="sip-input" placeholder="1-S-4-260437_1 1-S-4-156432_1 ...">
       <button class="action-btn" id="sip-btn">Sorgula</button>
     </div>
     <div id="sip-error" class="error"></div>
-    <div class="result" id="sip-result"></div>
+    <div class="lookup-results" id="sip-result"></div>
   </section>
 
   <footer>Sevkiyat Takip · MAD Parfum B2C (Marketplace) · Ankara (Akyurt) deposu</footer>
@@ -978,13 +985,12 @@
     ['Teslim edildi', 'Delivered_At']
   ];
 
-  function renderLookup(data){
-    var resultEl = document.getElementById('sip-result');
-    var errorEl = document.getElementById('sip-error');
-    errorEl.textContent = '';
-    if(data.error){ errorEl.textContent = 'Hata: ' + data.error; resultEl.classList.remove('show'); return; }
-    if(!data.found){ errorEl.textContent = 'Bu sipariş no bulunamadı: ' + data.sip_no; resultEl.classList.remove('show'); return; }
-
+  // Coklu sipariş arama: /lookup artik {results:[...]} donuyor -- her sonuc kendi
+  // karti, girilen sirayla alt alta (kullanici, 2026-09-14).
+  function lookupCardHtml(data){
+    if(!data.found){
+      return '<div class="result show notfound"><div class="note">Bu sipariş no bulunamadı: <b>' + esc(data.sip_no) + '</b></div></div>';
+    }
     var sahadaMi = (data.cargo_state === 'ReadyToShip' || data.cargo_state === 'WaitingForSLAM');
     var html = '<div class="result-head">' +
       '<h2>' + esc(data.musteri) + ' — ' + esc(data.sip_no) + '</h2>' +
@@ -996,18 +1002,30 @@
       var val = data[pair[1]];
       return '<div class="tl-row"><div class="tl-label">' + pair[0] + '</div><div class="tl-value' + (val ? '' : ' empty') + '">' + (val ? fmtDate(val) : 'henüz yok') + '</div></div>';
     }).join('') + '</div>';
-    resultEl.innerHTML = html;
-    resultEl.classList.add('show');
-    applyStagger(resultEl, '.tl-row', 25);
+    return '<div class="result show">' + html + '</div>';
+  }
+
+  function renderLookup(data){
+    var resultEl = document.getElementById('sip-result');
+    var errorEl = document.getElementById('sip-error');
+    errorEl.textContent = '';
+    if(data.error){ errorEl.textContent = 'Hata: ' + data.error; resultEl.innerHTML = ''; return; }
+    var results = data.results || [];
+    if(!results.length){ resultEl.innerHTML = ''; return; }
+    resultEl.innerHTML = results.map(lookupCardHtml).join('');
+    applyStagger(resultEl, '.result', 60);
+    resultEl.querySelectorAll('.result').forEach(function(card){ applyStagger(card, '.tl-row', 20); });
   }
 
   function doLookup(){
     var v = document.getElementById('sip-input').value.trim();
     var errorEl = document.getElementById('sip-error');
     if(!v){ errorEl.textContent = 'Sipariş no girin.'; return; }
+    var sipNolar = v.split(/[\s,]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+    if(!sipNolar.length){ errorEl.textContent = 'Sipariş no girin.'; return; }
     var btn = document.getElementById('sip-btn');
     btn.disabled = true; errorEl.textContent = '';
-    fetch(WORKER_URL + 'lookup?sip_no=' + encodeURIComponent(v), { cache: 'no-store' })
+    fetch(WORKER_URL + 'lookup?sip_no=' + encodeURIComponent(sipNolar.join(',')), { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(renderLookup)
       .catch(function(err){ errorEl.textContent = 'Sorgu başarısız: ' + err; })
